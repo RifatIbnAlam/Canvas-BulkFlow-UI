@@ -8,13 +8,6 @@ Bulk download scanned PDFs from Canvas, OCR them via Abbyy FineReader Hot Folder
 - Live progress and logs
 - Windows `.exe` build support
 
-## Screenshots
-Add screenshots of the UI here.
-
-Example (replace with your own images):
-```markdown
-![Canvas BulkFlow UI](docs/screenshots/ui.png)
-```
 
 ## Quickstart (Mac)
 1. Install Python 3.11+.
