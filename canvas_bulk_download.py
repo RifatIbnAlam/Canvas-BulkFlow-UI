@@ -4,6 +4,7 @@ import os
 import re
 import time
 import argparse
+from canvas_bulkflow_config import load_env_file
 
 # ========== Defaults ==========
 
@@ -11,8 +12,10 @@ DEFAULT_FILE_ID_COLUMN = "Id"
 DEFAULT_FILENAME_COLUMN = "Name"
 DEFAULT_BASE_URL = "https://usu.instructure.com"
 DEFAULT_OUTPUT_FOLDER = r"C:\Canvas-BulkFlow\Downloads"
-
-from canvas_bulkflow_config import load_env_file
+DEFAULT_CANVAS_TOKEN = ""
+DEFAULT_REQUEST_TIMEOUT = 30
+DELETED_AT_COLUMN = "Deleted at"
+URL_COLUMN = "Url"
 
 load_env_file()
 
@@ -26,6 +29,16 @@ def sanitize_filename(name: str) -> str:
 def load_filtered_df(csv_file, file_id_column, filename_column):
     df = pd.read_csv(csv_file)
     df = df[(df['Mime type'] == 'application/pdf') & (df['Scanned:1'] == 1)]
+
+    # Only keep active files: not deleted OR still has a URL.
+    if DELETED_AT_COLUMN in df.columns or URL_COLUMN in df.columns:
+        deleted_series = df[DELETED_AT_COLUMN] if DELETED_AT_COLUMN in df.columns else pd.Series(index=df.index, dtype=object)
+        url_series = df[URL_COLUMN] if URL_COLUMN in df.columns else pd.Series(index=df.index, dtype=object)
+
+        not_deleted = deleted_series.isna() | (deleted_series.astype(str).str.strip() == "")
+        has_url = (~url_series.isna()) & (url_series.astype(str).str.strip() != "")
+        df = df[not_deleted | has_url]
+
     df.info()
 
     # Find all filenames that appear more than once in the CSV
@@ -43,7 +56,7 @@ def run_download(
     filename_column=DEFAULT_FILENAME_COLUMN,
     progress_cb=None,
 ):
-    token = canvas_token or os.getenv("CANVAS_API_TOKEN", "")
+    token = (canvas_token or os.getenv("CANVAS_API_TOKEN", "") or DEFAULT_CANVAS_TOKEN).strip()
     if not token:
         print("Canvas API token is required. Set CANVAS_API_TOKEN or provide it in the UI.")
         return
@@ -85,7 +98,11 @@ def run_download(
 
         # 1. Fetch file metadata from Canvas API
         file_api_url = f"{base_url}/api/v1/files/{int(file_id)}"
-        meta_resp = requests.get(file_api_url, headers=headers)
+        try:
+            meta_resp = requests.get(file_api_url, headers=headers, timeout=DEFAULT_REQUEST_TIMEOUT)
+        except requests.RequestException as e:
+            print(f"[Row {index}] Metadata request failed for file ID {file_id}: {e}. Skipping.")
+            continue
         if meta_resp.status_code != 200:
             print(f"[Row {index}] Failed to retrieve metadata for file ID {file_id} (Status: {meta_resp.status_code}). Skipping.")
             continue
@@ -100,7 +117,16 @@ def run_download(
 
         # 2. Download the file
         print(f"[Row {index}] Downloading {file_name} from {download_url}")
-        download_resp = requests.get(download_url, headers=headers, stream=True)
+        try:
+            download_resp = requests.get(
+                download_url,
+                headers=headers,
+                stream=True,
+                timeout=DEFAULT_REQUEST_TIMEOUT,
+            )
+        except requests.RequestException as e:
+            print(f"[Row {index}] Download request failed for {file_name}: {e}.")
+            continue
         if download_resp.status_code != 200:
             print(f"[Row {index}] Failed to download {file_name} (Status: {download_resp.status_code}).")
             continue

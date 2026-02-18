@@ -3,6 +3,7 @@ import time
 import requests
 import pandas as pd
 import argparse
+from canvas_bulkflow_config import load_env_file
 
 # -------------------------------------------------------------------------------
 # Configuration
@@ -10,8 +11,8 @@ import argparse
 
 DEFAULT_BASE_URL = "https://usu.instructure.com"
 DEFAULT_OCR_FOLDER = r"C:\Canvas-BulkFlow\Downloads\OCRed"
-
-from canvas_bulkflow_config import load_env_file
+DEFAULT_CANVAS_TOKEN = ""
+DEFAULT_REQUEST_TIMEOUT = 30
 
 load_env_file()
 
@@ -21,7 +22,11 @@ load_env_file()
 
 def get_file_metadata(file_id, headers, base_url):
     url = f"{base_url}/api/v1/files/{file_id}"
-    resp = requests.get(url, headers=headers)
+    try:
+        resp = requests.get(url, headers=headers, timeout=DEFAULT_REQUEST_TIMEOUT)
+    except requests.RequestException as e:
+        print(f"[get_file_metadata] Request failed for file_id={file_id}: {e}")
+        return None
     if resp.status_code == 200:
         return resp.json()
     else:
@@ -30,7 +35,11 @@ def get_file_metadata(file_id, headers, base_url):
 
 def get_folder_metadata(folder_id, headers, base_url):
     url = f"{base_url}/api/v1/folders/{folder_id}"
-    resp = requests.get(url, headers=headers)
+    try:
+        resp = requests.get(url, headers=headers, timeout=DEFAULT_REQUEST_TIMEOUT)
+    except requests.RequestException as e:
+        print(f"[get_folder_metadata] Request failed for folder_id={folder_id}: {e}")
+        return None
     if resp.status_code == 200:
         return resp.json()
     else:
@@ -56,7 +65,13 @@ def overwrite_file_in_canvas(course_id, folder_id, local_file_path, filename, he
     }
 
     print(f"[Initiate] POST {initiate_url} with payload={payload}")
-    init_resp = requests.post(initiate_url, headers=headers, data=payload)
+    try:
+        init_resp = requests.post(
+            initiate_url, headers=headers, data=payload, timeout=DEFAULT_REQUEST_TIMEOUT
+        )
+    except requests.RequestException as e:
+        print(f"[Initiate] Request failed: {e}")
+        return False
     print("[Initiate] Status:", init_resp.status_code)
     print("[Initiate] Body:", init_resp.text)
 
@@ -76,7 +91,13 @@ def overwrite_file_in_canvas(course_id, folder_id, local_file_path, filename, he
         files_data = {
             'file': (filename, f, content_type)
         }
-        upload_resp = requests.post(upload_url, data=upload_params, files=files_data)
+        try:
+            upload_resp = requests.post(
+                upload_url, data=upload_params, files=files_data, timeout=DEFAULT_REQUEST_TIMEOUT
+            )
+        except requests.RequestException as e:
+            print(f"[Upload] Request failed: {e}")
+            return False
 
     print("[Upload] Status:", upload_resp.status_code)
     print("[Upload] Body:", upload_resp.text)
@@ -88,7 +109,13 @@ def overwrite_file_in_canvas(course_id, folder_id, local_file_path, filename, he
         # Handle possible redirect
         redirect_url = upload_resp.headers.get('Location')
         if redirect_url:
-            final_resp = requests.get(redirect_url, headers=headers)
+            try:
+                final_resp = requests.get(
+                    redirect_url, headers=headers, timeout=DEFAULT_REQUEST_TIMEOUT
+                )
+            except requests.RequestException as e:
+                print(f"[Redirect] Request failed: {e}")
+                return False
             print("[Redirect] Status:", final_resp.status_code)
             print("[Redirect] Body:", final_resp.text)
             if final_resp.status_code in [200, 201]:
@@ -120,7 +147,7 @@ def bulk_replace_ocr_files(
     
     Then overwrites each file in Canvas with the OCRed version and prints a summary log.
     """
-    token = canvas_token or os.getenv("CANVAS_API_TOKEN", "")
+    token = (canvas_token or os.getenv("CANVAS_API_TOKEN", "") or DEFAULT_CANVAS_TOKEN).strip()
     if not token:
         print("Canvas API token is required. Set CANVAS_API_TOKEN or provide it in the UI.")
         return

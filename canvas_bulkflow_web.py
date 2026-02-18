@@ -8,6 +8,7 @@ from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime
 
 from flask import Flask, jsonify, render_template_string, request
+from canvas_bulkflow_config import load_env_file
 
 from canvas_bulk_download import (
     run_download,
@@ -16,12 +17,12 @@ from canvas_bulk_download import (
 )
 from canvas_bulk_upload import (
     bulk_replace_ocr_files,
-    DEFAULT_BASE_URL as UPLOAD_BASE_URL,
     DEFAULT_OCR_FOLDER,
 )
 
 
 app = Flask(__name__)
+load_env_file()
 
 JOBS = {}
 JOBS_LOCK = threading.Lock()
@@ -118,6 +119,7 @@ PAGE = """
         --border: #1f2937;
       }
       * { box-sizing: border-box; }
+      html, body { max-width: 100%; overflow-x: hidden; }
       body {
         margin: 0;
         font-family: "Segoe UI", "SF Pro Text", system-ui, sans-serif;
@@ -132,12 +134,14 @@ PAGE = """
       h1 { margin: 0 0 8px; font-size: 32px; letter-spacing: 0.4px; }
       .sub { color: var(--muted); margin-bottom: 20px; }
       .grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; }
+      .grid > * { min-width: 0; }
       .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 18px; }
       .card h2 { margin: 0 0 12px; font-size: 16px; color: var(--accent); letter-spacing: 0.6px; text-transform: uppercase; }
       label { display: block; font-weight: 600; margin-bottom: 6px; }
       input[type="text"], input[type="file"] {
         width: 100%; padding: 10px 12px; border-radius: 10px;
         border: 1px solid #253041; background: #0b1220; color: var(--text);
+        min-width: 0;
       }
       .row { margin-bottom: 12px; }
       .actions { margin-top: 10px; display: flex; gap: 10px; }
@@ -156,10 +160,13 @@ PAGE = """
       pre {
         background: #0b1220; border: 1px solid #1f2937; padding: 12px; border-radius: 10px;
         height: 260px; overflow: auto; white-space: pre-wrap; color: #cbd5f5;
+        word-break: break-word;
+        overflow-wrap: anywhere;
       }
       .kpi { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 14px; color: var(--muted); }
       @media (max-width: 900px) {
         .grid { grid-template-columns: 1fr; }
+        .actions { flex-wrap: wrap; }
       }
     </style>
   </head>
@@ -178,6 +185,10 @@ PAGE = """
             <div class="row">
               <label>Canvas base URL</label>
               <input type="text" name="base_url" value="{{ base_url }}">
+            </div>
+            <div class="row">
+              <label>Canvas API token</label>
+              <input type="text" name="token" value="{{ token }}" placeholder="CANVAS_API_TOKEN or paste token">
             </div>
             <div class="row">
               <label>Download folder</label>
@@ -225,24 +236,38 @@ PAGE = """
       const logBox = document.getElementById("logBox");
       let currentJob = null;
       let pollTimer = null;
+      let startInFlight = false;
 
       async function startJob(action) {
-        if (currentJob) return;
+        if (currentJob || startInFlight) return;
+        startInFlight = true;
+        downloadBtn.disabled = true;
+        uploadBtn.disabled = true;
         const formData = new FormData(form);
         formData.append("action", action);
         statusText.textContent = "Starting...";
         logBox.textContent = "";
-
-        const resp = await fetch("/start", { method: "POST", body: formData });
-        if (!resp.ok) {
-          const msg = await resp.text();
+        try {
+          const resp = await fetch("/start", { method: "POST", body: formData });
+          if (!resp.ok) {
+            const msg = await resp.text();
+            statusText.textContent = "Failed to start";
+            logBox.textContent = msg;
+            return;
+          }
+          const data = await resp.json();
+          currentJob = data.job_id;
+          startPolling();
+        } catch (err) {
           statusText.textContent = "Failed to start";
-          logBox.textContent = msg;
-          return;
+          logBox.textContent = `Network error while starting job: ${err}`;
+        } finally {
+          startInFlight = false;
+          if (!currentJob) {
+            downloadBtn.disabled = false;
+            uploadBtn.disabled = false;
+          }
         }
-        const data = await resp.json();
-        currentJob = data.job_id;
-        startPolling();
       }
 
       async function pollStatus() {
@@ -291,8 +316,10 @@ PAGE = """
 @app.route("/", methods=["GET"])
 def index():
     base_url = os.getenv("CANVAS_BASE_URL", DOWNLOAD_BASE_URL)
+    token = os.getenv("CANVAS_API_TOKEN", "")
     return render_template_string(
         PAGE,
+        token=token,
         base_url=base_url,
         output_folder=DEFAULT_OUTPUT_FOLDER,
         ocr_folder=DEFAULT_OCR_FOLDER,
@@ -311,7 +338,9 @@ def start():
     if action not in ("download", "upload"):
         return "Invalid action.", 400
 
-    token = os.getenv("CANVAS_API_TOKEN", "")
+    token = request.form.get("token", "").strip() or os.getenv("CANVAS_API_TOKEN", "")
+    if not token:
+        return "Missing Canvas API token. Provide it in the form or CANVAS_API_TOKEN env var.", 400
     base_url = request.form.get("base_url", "").strip() or DOWNLOAD_BASE_URL
     output_folder = request.form.get("output_folder", "").strip() or DEFAULT_OUTPUT_FOLDER
     ocr_folder = request.form.get("ocr_folder", "").strip() or DEFAULT_OCR_FOLDER

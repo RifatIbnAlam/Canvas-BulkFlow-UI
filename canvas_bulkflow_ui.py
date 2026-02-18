@@ -4,6 +4,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from contextlib import redirect_stdout, redirect_stderr
+from canvas_bulkflow_config import load_env_file
 
 from canvas_bulk_download import (
     run_download,
@@ -15,6 +16,8 @@ from canvas_bulk_upload import (
     DEFAULT_BASE_URL as UPLOAD_BASE_URL,
     DEFAULT_OCR_FOLDER,
 )
+
+load_env_file()
 
 
 class QueueWriter:
