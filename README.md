@@ -4,27 +4,26 @@ Bulk download scanned PDFs from Canvas, OCR them via Abbyy FineReader Hot Folder
 
 ## Features
 - Friendly local web UI (no terminal needed for staff)
-- One‑click Download and Upload
+- One-click Download and Upload
 - Live progress and logs
 - Windows `.exe` build support
-
 
 ## Quickstart (Mac)
 1. Install Python 3.11+.
 2. Install dependencies:
    ```bash
-   python3 -m pip install --user -r "Canvas-BulkFlow/requirements.txt"
+   python3 -m pip install --user -r requirements.txt
    ```
 3. Set your API token:
    ```bash
-   cp "Canvas-BulkFlow/canvas_bulkflow.env.example" "Canvas-BulkFlow/canvas_bulkflow.env"
+   cp canvas_bulkflow.env.example canvas_bulkflow.env
    ```
-   Edit `Canvas-BulkFlow/canvas_bulkflow.env` and set `CANVAS_API_TOKEN`.
+   Edit `canvas_bulkflow.env` and set `CANVAS_API_TOKEN`.
 4. Run the UI:
    ```bash
-   python3 "Canvas-BulkFlow/canvas_bulkflow_web.py"
+   python3 canvas_bulkflow_web.py
    ```
-5. Open `http://127.0.0.1:5000` (auto‑opens on most systems).
+5. Open `http://127.0.0.1:5000` (auto-opens on most systems).
 
 ## Quickstart (Windows)
 1. Install Python 3.11+ (from [python.org](https://www.python.org/downloads/)). Check **Add Python to PATH**.
@@ -55,11 +54,11 @@ Set environment variables in `canvas_bulkflow.env` (not committed):
 - `CANVAS_BASE_URL` (optional, defaults to `https://usu.instructure.com`)
 
 ## Project Layout
-- `Canvas-BulkFlow/canvas_bulkflow_web.py` — web UI
-- `Canvas-BulkFlow/canvas_bulk_download.py` — download script
-- `Canvas-BulkFlow/canvas_bulk_upload.py` — upload script
-- `Canvas-BulkFlow/build_windows.bat` — Windows build script
-- `Canvas-BulkFlow/canvas_bulkflow.spec` — PyInstaller spec
+- `canvas_bulkflow_web.py` - web UI
+- `canvas_bulk_download.py` - download script
+- `canvas_bulk_upload.py` - upload script
+- `build_windows.bat` - Windows build script
+- `canvas_bulkflow.spec` - PyInstaller spec
 
 ## Security
 Never commit your Canvas API token. Use `canvas_bulkflow.env` locally.
