@@ -1,0 +1,10 @@
+canvas_bulkflow.env
+.env
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+build/
+dist/
